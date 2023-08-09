@@ -1,0 +1,24 @@
+# This is a workflow to benchmark the sourmash sketch command
+from os import walk
+
+configfile: "config/sketch-config.yml"
+
+outdir = config.get("output_directory", "/output/results")
+indir = config.get("samples_directory", "/input/raw")
+
+SAMPLES_LIST = []
+for (dirpath, dirnames, filenames) in walk(indir):
+    SAMPLES_LIST.extend(filenames)
+    break
+
+rule all:
+    input:
+        expand(f"{outdir} 
+
+rule benchmark_sketch:
+    input:
+
+    output:
+
+    benchmark:
+        

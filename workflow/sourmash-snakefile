@@ -1,0 +1,98 @@
+# This is a snakefile to run the sourmash program
+# Heavily inspired and copied from genome-grist
+import tempfile
+
+configfile: "config/config.yml"
+
+SAMPLES=config['samples']
+
+# Define input for the reads
+indir = config.get('indir', 'input/')
+indir = indir.rstrip('/')
+print('indir:', indir, file=sys.stderr)
+
+# Define a temporary directory
+base_tempdir = None
+try_temp_locations = config.get('tempdir', [])
+for temp_loc in try_temp_locations:
+    try:
+        base_tempdir = tempfile.mkdtemp(dir=temp_loc)
+    except FileNotFoundError:
+        pass
+
+if not base_tempdir:
+    print(f"Could not create a temporary directory in any of {try_temp_locations}", file=sys.stderr)
+    print("Please set 'tempdir' in the config.", file=sys.stderr)
+    sys.exit(-1)
+print(f'base_tempdir: {base_tempdir}', file=sys.stderr)
+
+onsuccess:
+    shutil.rmtree(base_tempdir, ignore_errors=True)
+
+onerror:
+    shutil.rmtree(base_tempdir, ignore_errors=True)
+
+### Begin the workflow with a psuedo-rule
+rule download_reads:
+    input:
+        expand(f"{indir}/raw/{{sample}}_1.fastq.gz", sample=SAMPLES),
+        expand(f"{indir}/raw/{{sample}}_2.fastq.gz", sample=SAMPLES),
+        
+
+# download SRA IDs.
+rule download_sra:
+    output:
+        r1  = protected(indir + "/raw/{sample}_1.fastq.gz"),
+        r2  = protected(indir + "/raw/{sample}_2.fastq.gz"),
+        unp = protected(indir + "/raw/{sample}_unpaired.fastq.gz"),
+        # temporary output
+        temp_dir = temp(directory(f"{base_tempdir}/{{sample}}.d")),
+        temp_r1 =  f"{base_tempdir}/{{sample}}.d/{{sample}}_1.fastq",
+        temp_r2 =  f"{base_tempdir}/{{sample}}.d/{{sample}}_2.fastq",
+        temp_unp = f"{base_tempdir}/{{sample}}.d/{{sample}}.fastq",
+#    params:
+#        indir = indir,
+    threads: 6
+    conda: "workflow/envs/sra.yml"
+    resources:
+        mem_mb=40000,
+    shell: '''
+        echo tmp directory: {output.temp_dir}
+        echo running fasterq-dump for {wildcards.sample}
+
+        fasterq-dump {wildcards.sample} -O {output.temp_dir} \
+        -t {output.temp_dir} -e {threads} -p --split-files
+        ls -h {output.temp_dir}
+
+        # make unpaired file if needed
+        if [ -f {output.temp_r1} -a -f {output.temp_r2} -a \! -f {output.temp_unp} ];
+          then
+            echo "no unpaired; creating empty unpaired file {output.unp} for simplicity"
+            touch {output.temp_unp}
+          # make r1, r2 files if needed
+        elif [ -f {output.temp_unp} -a \! -f {output.temp_r1} -a \! -f {output.temp_r2} ];
+          then
+            echo "unpaired file found; creating empty r1 ({output.temp_r1}) and r2 ({output.temp_r2}) files for simplicity"
+            touch {output.temp_r1}
+            touch {output.temp_r2}
+        fi
+
+        # now process the files and move to a permanent location
+        echo processing R1...
+        seqtk seq -C {output.temp_r1} | \
+            perl -ne 's/\.([12])$/\/$1/; print $_' | \
+            gzip -c > {output.r1} &
+
+        echo processing R2...
+        seqtk seq -C {output.temp_r2} | \
+            perl -ne 's/\.([12])$/\/$1/; print $_' | \
+            gzip -c > {output.r2} &
+
+        echo processing unpaired...
+        seqtk seq -C {output.temp_unp} | \
+            perl -ne 's/\.([12])$/\/$1/; print $_' | \
+            gzip -c > {output.unp} &
+        wait
+        echo finished downloading raw reads
+        '''
+

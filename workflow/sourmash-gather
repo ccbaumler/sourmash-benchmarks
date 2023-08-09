@@ -1,0 +1,25 @@
+# This is a workflow to benchmark the sourmash gather command
+from os import walk
+
+configfile: "config/gather-config.yml"
+
+SAMPLES_DIR = config.get("samples_directory", "/input/sig")
+
+SAMPLES_LIST = []
+for (dirpath, dirnames, filenames) in walk(SAMPLES_DIR):
+    SAMPLES_LIST.extend(filenames)
+    break
+
+rule all:
+    input:
+        expand(
+
+rule benchmark_gather:
+    input:
+        SAMPLES_DIR + "/{sample} 
+    output:
+
+    benchmark:
+        "output/benchmarks/gather.{sample}.tsv"
+    shell:
+        "sourmash gather {input} /group/ctbrowngrp/sourmash-db/gtdb-rs207/gtdb-rs207.genomic-reps.dna.k31.zip -o {output}"

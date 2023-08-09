@@ -1,0 +1,12 @@
+# Global snakefile configuration
+
+samples:
+  - SRR1976948
+  - SRR1977349
+  - SRR1977296
+  - SRR1977304
+  - SRR1977357
+  - SRR1977365
+
+tempdir:
+  - /tmp
