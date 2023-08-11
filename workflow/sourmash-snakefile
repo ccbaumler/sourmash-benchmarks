@@ -1,6 +1,6 @@
 # This is a snakefile to run the sourmash program
 # Heavily inspired and copied from genome-grist
-import tempfile
+import tempfile, shutil
 
 configfile: "config/config.yml"
 
@@ -53,7 +53,7 @@ rule download_sra:
 #    params:
 #        indir = indir,
     threads: 6
-    conda: "workflow/envs/sra.yml"
+    conda: "envs/sra.yml"
     resources:
         mem_mb=40000,
     shell: '''
