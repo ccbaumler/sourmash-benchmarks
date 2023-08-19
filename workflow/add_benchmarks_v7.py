@@ -1,28 +1,28 @@
-#! usr/env/bin python
+#! usr/bin/env python
 
 import argparse
 import re
 from multiprocessing import Process, Manager
 
-def process_rule(rule_name, data, rule_indices, benchmark_data):
+def process_rule(rule_name, data, rule_data, benchmark_data):
     benchmark_section = f"\n    benchmark:\n        'benchmarks/{rule_name}.tsv'"
-    rule_pattern = rf'\nrule {rule_name}:((\n(.+))+)'
+    #rule_pattern = rf'\nrule {rule_name}:((\n(.+))+)'
     target_rule_pattern = rf'(?<=\nrule\s){rule_name}:((\n(.+))+)\s+output:((\n(.+))+)(?=\s\s\s\s+shell:|\s\s\s\s+run:|\s\s\s\s+script:)'
     rule_match = re.search(target_rule_pattern, data)
-    print(rule_match)
+    #print(rule_match)
     if rule_match:
         rule_text = rule_match.group(0)
-        print(rule_text)
+        #print(rule_text)
         if 'benchmark:' not in rule_text:
             updated_rule_text = rule_text + benchmark_section
-            print(updated_rule_text)
-            rule_index = rule_indices[rule_name]
-            benchmark_data[rule_index] = updated_rule_text
+            #print(updated_rule_text)
+            rule_data[rule_name] = rule_text
+            benchmark_data[rule_name] = updated_rule_text
             print(f"Added benchmark section to rule '{rule_name}'")
         else:
             print(f"Benchmark section already exists for rule '{rule_name}'")
     else:
-        print(f"Rule '{rule_name}' not found in data")
+        print(f"Rule '{rule_name}' a top-level rule or not found in data")
 
 def main():
     p = argparse.ArgumentParser()
@@ -43,26 +43,30 @@ def main():
         print("Found rules:", all_rules)
 
         rule_indices = {rule_name: idx for idx, rule_name in enumerate(all_rules)}
-        print(rule_indices)
+#        print(rule_indices)
         manager = Manager()
-        benchmark_data = manager.list([''] * len(all_rules))
+
+        rule_data = manager.dict()
+        benchmark_data = manager.dict()
 
         processes = []
 
         for rule_name in all_rules:
-            process = Process(target=process_rule, args=(rule_name, data, rule_indices, benchmark_data))
-            process.start()
+            process = Process(target=process_rule, args=(rule_name, data, rule_data, benchmark_data))
+            process.start() 
             processes.append(process)
-            print(process)
+#            print(process)
         for process in processes:
             process.join()
-            print(process)
-        for idx, modified_rule_data in enumerate(benchmark_data):
+#            print(process)
+        for rule_name, modified_rule_data in benchmark_data.items():
             if modified_rule_data:
-                rule_name = all_rules[idx]
-                print(rule_name)
-                data = data.replace(rule_name, modified_rule_data)
-                print(data)
+                #rule_name = all_rules[idx]
+                #print('zzz', (rule_name,), 'zzz2')
+                #print('yyy', (modified_rule_data,), 'yyy2')
+                rule_text = rule_data[rule_name]
+                data = data.replace(rule_text, modified_rule_data)
+#                print(data)
         with open(args.output, 'w') as output_fp:
             output_fp.write(data)
 

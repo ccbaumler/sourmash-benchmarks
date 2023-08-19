@@ -1,3 +1,5 @@
-input/raw/
+workflow/input/
+
+workflow/output/
 
 .snakemake
