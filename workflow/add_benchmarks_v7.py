@@ -4,6 +4,9 @@ import argparse
 import re
 from multiprocessing import Process, Manager
 
+#create function for --benchmarks and for --resources that can be pulled process_rule
+#add wildcards to benchmarks, if f string then look for {{wildcards}} else {wildcards} 
+
 def process_rule(rule_name, data, rule_data, benchmark_data):
     benchmark_section = f"\n    benchmark:\n        'benchmarks/{rule_name}.tsv'"
     #rule_pattern = rf'\nrule {rule_name}:((\n(.+))+)'
@@ -26,10 +29,12 @@ def process_rule(rule_name, data, rule_data, benchmark_data):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('-s', '--snakefile', help='The snakefile to bless with benchmark sections')
-    p.add_argument('-t', '--top-level', help='The snakefile has top-level rules (e.g. rule all)')
-    p.add_argument('-w', '--wildcards', help='Include the wildcards in benchmark file name')
-    p.add_argument('-r', '--repeats', help='Set the amount of repeats for all benchmarks')
+    p.add_argument('-s', '--snakefile', help='The snakefile to bless with benchmark/resource sections')
+    p.add_argument('-t', '--top-level', help='Print the snakefile top-level/psuedo-rules rules (e.g. rule all)')
+    p.add_argument('-w', '--wildcards', help='Print the wildcards in benchmark file name for each rule')
+    p.add_argument('-b', '--benchmarks', help='Add benchmark sections to each target rule in the snakefile')
+    #p.add_argument('-r', '--repeats', help='Set the amount of repeats for all benchmarks') #remove this and include a integer count to --benchmarks eg -b 5?
+    p.add_argument('-r', '--resources', help='Add resources section to each target rule in snakefile from benchmark output')
     p.add_argument('-o', '--output', help='New snakefile with benchmark sections')
     args = p.parse_args()
 
