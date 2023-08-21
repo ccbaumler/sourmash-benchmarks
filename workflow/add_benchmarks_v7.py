@@ -4,41 +4,66 @@ import argparse
 import re
 from multiprocessing import Process, Manager
 
-#create function for --benchmarks and for --resources that can be pulled process_rule
+#create function for --resources that can be pulled process_rule
 #add wildcards to benchmarks, if f string then look for {{wildcards}} else {wildcards} 
 
-def process_rule(rule_name, data, rule_data, benchmark_data):
-    benchmark_section = f"\n    benchmark:\n        'benchmarks/{rule_name}.tsv'"
-    #rule_pattern = rf'\nrule {rule_name}:((\n(.+))+)'
+def process_rule(rule_name, data, rule_data, benchmark_data, wildcard_data, benchmark_count, top_level_rules):
+
+    if benchmark_count == 1:
+        benchmark_section = f"\n    benchmark:\n        'benchmarks/{rule_name}.tsv'"
+    elif isinstance(benchmark_count, int):
+        benchmark_section =  f"\n    benchmark:\n        repeat('benchmarks/{rule_name}.tsv', {benchmark_count})"
+
     target_rule_pattern = rf'(?<=\nrule\s){rule_name}:((\n(.+))+)\s+output:((\n(.+))+)(?=\s\s\s\s+shell:|\s\s\s\s+run:|\s\s\s\s+script:)'
     rule_match = re.search(target_rule_pattern, data)
-    #print(rule_match)
+
+    wildcard_pattern = r'(\{.*?\})|(\{{2}.*?\}{2})'
+    wildcards
+    
     if rule_match:
         rule_text = rule_match.group(0)
-        #print(rule_text)
-        if 'benchmark:' not in rule_text:
+        if benchmark_count and 'benchmark:' not in rule_text:
             updated_rule_text = rule_text + benchmark_section
-            #print(updated_rule_text)
             rule_data[rule_name] = rule_text
             benchmark_data[rule_name] = updated_rule_text
-            print(f"Added benchmark section to rule '{rule_name}'")
-        else:
+            print(f"Added benchmark section to rule '{rule_name} with {benchmark_count} repeat/s")
+        elif 'benchmark:' in rule_text:
             print(f"Benchmark section already exists for rule '{rule_name}'")
+        else:
+            print("Done!")
     else:
-        print(f"Rule '{rule_name}' a top-level rule or not found in data")
+        top_level_rules.append(rule_name)
+
+
+#https://stackoverflow.com/questions/14117415/how-can-i-constrain-a-value-parsed-with-argparse-for-example-restrict-an-integ
+def check_positive(value):
+    try:
+        int_value = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("%s is not an integer" % value)
+
+    if int_value <= 0:
+        raise argparse.ArgumentTypeError("%s is not a positive integer" % value)
+    return int_value
+
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument('-s', '--snakefile', help='The snakefile to bless with benchmark/resource sections')
-    p.add_argument('-t', '--top-level', help='Print the snakefile top-level/psuedo-rules rules (e.g. rule all)')
-    p.add_argument('-w', '--wildcards', help='Print the wildcards in benchmark file name for each rule')
-    p.add_argument('-b', '--benchmarks', help='Add benchmark sections to each target rule in the snakefile')
-    #p.add_argument('-r', '--repeats', help='Set the amount of repeats for all benchmarks') #remove this and include a integer count to --benchmarks eg -b 5?
+    p = argparse.ArgumentParser(prog='name', description='{name} will do what I describe here')
+    
+    p.add_argument('-s', '--snakefile', required=True, help='The snakefile to bless with benchmark/resource sections')
+    p.add_argument('-o', '--output', required=True, help='New snakefile with benchmark sections')
+    p.add_argument('-t', '--top-level', action='store_true', help='Print the snakefile top-level/psuedo-rules rules (e.g. rule all)')
+    p.add_argument('-w', '--wildcards', action='store_true', help='Print the wildcards in benchmark file name for each rule')
+    p.add_argument('-b', '--benchmarks', type=check_positive, nargs='?', metavar='1,2,3, or ...', help='''Add benchmark sections to each target rule in the snakefile.
+            Set any number of repeats for all benchmarks with a positive integer''')
     p.add_argument('-r', '--resources', help='Add resources section to each target rule in snakefile from benchmark output')
-    p.add_argument('-o', '--output', help='New snakefile with benchmark sections')
     args = p.parse_args()
-
+    
+    print(args.benchmarks)
+    benchmark_count = args.benchmarks
     snakefile = args.snakefile
+    top_level = args.top_level
+    wildcard = args.wildcards
 
     with open(snakefile, 'r') as fp:
         data = fp.read()
@@ -48,22 +73,35 @@ def main():
         print("Found rules:", all_rules)
 
         rule_indices = {rule_name: idx for idx, rule_name in enumerate(all_rules)}
-#        print(rule_indices)
+        
         manager = Manager()
 
         rule_data = manager.dict()
         benchmark_data = manager.dict()
-
+        wildcard_data = manager.dict()
+        top_level_rules = manager.list()
         processes = []
 
         for rule_name in all_rules:
-            process = Process(target=process_rule, args=(rule_name, data, rule_data, benchmark_data))
+            process = Process(target=process_rule, args=(rule_name, data, rule_data, benchmark_data, wildcard_data, benchmark_count, top_level_rules))
             process.start() 
             processes.append(process)
-#            print(process)
+        
         for process in processes:
             process.join()
-#            print(process)
+
+        if top_level and top_level_rules:
+            for rule in top_level_rules:
+                print(f"Rule '{rule}' is a top-level/psuedo rule")
+        elif top_level and not top_level_rules:
+            print("No top-level/psuedo rules found!")
+
+        if wildcards and wildcard_data:
+            for rule in wildcard_data[rule_names]:
+                print(f"Rule '{rule}' has the wildcards: ")
+        elif wildcards and not wildcard_data:
+            print("No wildcards found!")
+
         for rule_name, modified_rule_data in benchmark_data.items():
             if modified_rule_data:
                 #rule_name = all_rules[idx]
@@ -71,7 +109,7 @@ def main():
                 #print('yyy', (modified_rule_data,), 'yyy2')
                 rule_text = rule_data[rule_name]
                 data = data.replace(rule_text, modified_rule_data)
-#                print(data)
+
         with open(args.output, 'w') as output_fp:
             output_fp.write(data)
 
