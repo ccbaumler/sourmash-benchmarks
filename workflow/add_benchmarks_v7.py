@@ -26,6 +26,7 @@ def process_rule(rule_name, data, rule_data, output_data, benchmark_data, wildca
                 updated_rule_text = rule_text + formatted_benchmark_section
                 rule_data[rule_name] = rule_text
                 benchmark_data[rule_name] = updated_rule_text
+                wildcard_data[rule_name] = wildcards
                 print(f"Added benchmark section to rule '{rule_name} with {benchmark_count} repeat/s")
             else:
                 benchmark_section = f"\n    benchmark:\n        'benchmarks/{rule_name}.{benchmark_wildcards}.tsv'"
