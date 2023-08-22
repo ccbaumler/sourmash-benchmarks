@@ -17,7 +17,7 @@ def process_rule(rule_name, data, rule_data, output_data, benchmark_data, wildca
     if rule_match:
         rule_text = rule_match.group(0)
         output_section = re.search(output_pattern, rule_text)
-        wildcards = re.findall(wildcard_pattern, output_section.group(0))
+        wildcards = set(re.findall(wildcard_pattern, output_section.group(0)))
         print((wildcards,), )
         benchmark_wildcards = '.'.join(f"{wc}" for wc in wildcards)
         if benchmark_count==1 and 'benchmark:' not in rule_text:
