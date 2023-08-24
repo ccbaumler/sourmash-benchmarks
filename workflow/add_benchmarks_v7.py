@@ -13,8 +13,9 @@ def main():
     p.add_argument('-s', '--snakefile', required=True, help='The snakefile to bless with benchmark/resource sections')
     p.add_argument('-o', '--output', help='New snakefile with benchmark sections') #Should this be set to required=True?
     p.add_argument('-t', '--top-level', action='store_true', help='Print the snakefile top-level/psuedo-rules rules (e.g. rule all)')
+    p.add_argument('-tr', '--target-rule', nargs='?', type=str, default=None, const='all', help='Return onlt the target rule text. Default will return all target rule text.')
     p.add_argument('-w', '--wildcards', action='store_true', help='Print the wildcards in benchmark file name for each target rule')
-    p.add_argument('-ew', '--exclude-wildcards', action='extend', nargs='+', type=str, help='Include any wildcards that should be excluded from the benchmark filename')
+    p.add_argument('-ew', '--exclude-wildcards', action='extend', nargs='+', type=str, help='Include any wildcards that should be excluded from the benchmark filename (e.g. {outdir} or {{indir}})')
     p.add_argument('-b', '--benchmarks', type=check_positive, nargs='?', const=1, metavar='1,2,3, or ...', help='''Add benchmark sections to each target rule in the snakefile.
             Set any number of repeats for all benchmarks with a positive integer''')
     p.add_argument('-rb', '--remove-benchmarks', action='store_true', help='Remove all benchmark sections from the input file!')
@@ -27,6 +28,7 @@ def main():
     snakefile = args.snakefile
     output = args.output
     top_level = args.top_level
+    target_rule = args.target_rule
     wildcard = args.wildcards
     exclude_wildcards = args.exclude_wildcards
     remove_benchmarks = args.remove_benchmarks
@@ -52,30 +54,34 @@ def main():
         ## resources are defined for output file
 ############I think this should become a function called in process_rule()
         if resources:
-             apath = os.path.abspath(snakefile)
-             filepath, filename = os.path.split(apath)
-             inputpath = filepath + "/benchmarks"
+            apath = os.path.abspath(snakefile)
+            filepath, filename = os.path.split(apath)
+            inputpath = filepath + "/benchmarks"
 
-             combined_tsvs = "benchmarks.all.lines.tsv"
-             full_report = "benchmarks.full.report.tsv"
-             concise_report = "benchmarks.concise.report.tsv"
+            combined_tsvs = "benchmarks.all.lines.tsv"
+            full_report = "benchmarks.full.report.tsv"
+            concise_report = "benchmarks.concise.report.tsv"
 
-             combine_tsvs(inputpath, combined_tsvs)
+            combine_tsvs(inputpath, combined_tsvs)
 
-             grouped_data, concise_data = calculate_values(combined_tsvs)
-             s_max = concise_data[['s_max']].values.tolist()
-             max_rss_max = concise_data[['max_rss_max']].values.tolist()
+            grouped_data, concise_data = calculate_values(combined_tsvs)
+             #s_max = concise_data[['s_max']].values.tolist()
+             #max_rss_max = concise_data[['max_rss_max']].values.tolist()
 
+             #print(s_max)
+             #print(max_rss_max)
+             
+            resource_values = concise_data.to_dict('index')
+            print(resource_values)
 
-             grouped_data.to_csv(full_report, sep='\t')
-             concise_data.to_csv(concise_report, sep='\t')
-
-             results_section = f"\n    resources:\n        mem_mb = lambda wildcards, attempt: {max_rss_max} * attempt,\n        runtime = lambda wildcards, attempt: ({s_max} / 60) * attempt,"
+        else:
+             # A placeholder for the process function to operate when the -r is not used
+            resource_values = {}
 ############
 
         for rule_name in all_rules:
             process = Process(target=process_rule, args=(
-                rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, resources, remove_resources
+                rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, target_rule, resources, remove_resources, resource_values
                 ))
             process.start() 
             processes.append(process)
@@ -111,25 +117,38 @@ def main():
                 print(f"\nRule '{rule}' is a top-level/psuedo rule")
         elif top_level and not top_level_rules:
             print("\nNo top-level/psuedo rules found!")
+        
+        # For source output files
+        if resources:            
+             # Add 'filename' as a separate column in the resulting DataFrame
+             grouped_data.reset_index(inplace=True)
+             concise_data.reset_index(inplace=True)
+         
+             col0 = grouped_data.pop('filename')
+             grouped_data.insert(len(grouped_data.columns), 'filename', col0)
+             col0 = concise_data.pop('filename')
+             concise_data.insert(len(concise_data.columns), 'filename', col0)
+
+             grouped_data.to_csv(full_report, sep='\t')
+             concise_data.to_csv(concise_report, sep='\t')
 
         ## For the output file
         for rule_name, rule_data_dict in new_rule_data.items():
-            print('zzz', (rule_name,), 'zzz2')
+            #print('zzz', (rule_name,), 'zzz2')
             rule_text = rule_data[rule_name]
-            print('xxx', (rule_text,), 'xxx2')
-            benchmark_rule_text = rule_data_dict.get('benchmarks', "")
-            print('aaa', (benchmark_rule_text,), 'aaa2')
+            #print('xxx', (rule_text,), 'xxx2')
+            benchmark_rule_text = rule_data_dict.get('benchmarks', {})
+            #print('aaa', (benchmark_rule_text,), 'aaa2')
             resources_rule_text = rule_data_dict.get('resources', {})
-            print('bbb', (resources_rule_text,), 'bbb2')
-
+            #print('bbb', (resources_rule_text,), 'bbb2')
             if 'benchmarks' in rule_data_dict and 'resources' in rule_data_dict:
                 data = data.replace(rule_text, benchmarks_rule_text)
-                print('ccc', (data,), 'ccc2')
+             #   print('ccc', (data,), 'ccc2')
                 data = data.replace(data, resources_rule_text)
-                print('ddd', (data,), 'ddd2')
+             #   print('ddd', (data,), 'ddd2')
             elif 'benchmarks' in rule_data_dict:
                 data = data.replace(rule_text, benchmark_rule_text)
-                print('fff', (data,), 'fff2')
+             #   print('fff', (data,), 'fff2')
             elif 'resources' in rule_data_dict:    
                 data = data.replace(rule_text, resources_rule_text)
                
@@ -147,7 +166,7 @@ def main():
 
 
 
-def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, resources, remove_resources):
+def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, target_rule, resources, remove_resources, resource_values):
 
     target_rule_pattern = rf'(?<=\nrule\s){rule_name}:((\n(.+))+)\s+output:((\n(.+))+)(?=\s\s\s\s+shell:|\s\s\s\s+run:|\s\s\s\s+script:)'
     output_pattern = r'(?<=output:)([\s\S]*?)(?=\n\s*\w+:|\Z)'
@@ -159,8 +178,12 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
     
     if rule_match:
         rule_text = rule_match.group(0)
-        rule_data[rule_name] = rule_text        
- 
+        rule_data[rule_name] = rule_text
+        
+        if target_rule == 'all':
+            print(rule_text)
+        elif target_rule == rule_name:
+            print(rule_text)
         # For finding wildcards in the output section of a snakefile
         output_section = re.search(output_pattern, rule_text)
         wildcards = set(re.findall(wildcard_pattern, output_section.group(0)))
@@ -285,8 +308,20 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
                 new_rule_data[rule_name] = {'benchmarks': rule_text}
 
 
+        if resources:
+            for filename, resources_dict in resource_values.items():
+            
+                max_rss_max = resources_dict.get('max_rss_max', [])
+                s_max = resources_dict.get('s_max', [])
 
-        # Rule doesn't match the target_rule_pattern and therefore must be a pseudo-ruledding and removing benchmark section
+           
+            if filename == rule_name:
+                resources_section = f"\n    resources:\n        mem_mb = lambda wildcards, attempt: {max_rss_max} * attempt,\n        runtime = lambda wildcards, attempt: ({s_max} / 60) * attempt,"
+
+            else:
+                resources_section = ""    
+                print(f'{filename} from concise benchmarks report does not equal {rule_name}!')
+
         if 'resources:' in rule_text:
             if resources is True:
                 if remove_resources:
@@ -304,14 +339,16 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
                    #         updated_rule_text = updated_rule_text + repeat_formatted_benchmark_section
                    #     else:
                    #         updated_rule_text = updated_rule_text + repeat_benchmark_section
-                    new_rule_data[rule_name].update({'resources': updated_rule_text})
+                    print(f"And adding {max_rss_max} mem_mb and {s_max} runtime to '{rule_name}'") 
+                    updated_rule_text = updated_rule_text + resources_section
+                    new_rule_data[rule_name] = {'resources': updated_rule_text}
                 else:
                     print(f"\nResources section already exists for rule '{rule_name}'")
             else:
                 if remove_resources:
                     print(f"\nRemoving resources section from rule '{rule_name}'")
                     updated_rule_text = re.sub(resources_pattern, '', rule_text)
-                    new_rule_data[rule_name].update({'resources': updated_rule_text})
+                    new_rule_data[rule_name] = {'resources': updated_rule_text}
                 else:
                     print(f"\nResources section exists for rule '{rule_name}'")
         else:
@@ -329,10 +366,18 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
            #         updated_rule_text = rule_text + repeat_benchmark_section
            #     new_rule_data[rule_name] = {'benchmarks': updated_rule_text}
            #     print(f"\nAdded benchmark section to rule '{rule_name}' with {benchmark_count} repeats")
-           # else:
-           print(f"\nNo resources section to remove from rule '{rule_name}'")
-           new_rule_data[rule_name].update({'resources': rule_text})
+            #add rulname max s rss
+            if resources is True:
+               print(f"Adding the resources {max_rss_max} mem_mb and {s_max} runtime to '{rule_name}'")
+               updated_rule_text = rule_text + resources_section
+               print(updated_rule_text)
+               new_rule_data[rule_name] = {'resources': updated_rule_text}
+               print(new_rule_data,)
+            else:
+               print(f"\nNo resources section to remove from rule '{rule_name}'")
+        #new_rule_data[rule_name].update({'resources': rule_text})
 
+    # Rule doesn't match the target_rule_pattern and therefore must be a pseudo-ruledding and removing benchmark section
     else:
         top_level_rules.append(rule_name)
     
@@ -365,14 +410,6 @@ def calculate_values(fp):
     grouped.columns = [f"{col}_{agg}" for col in grouped.columns.levels[0] for agg in grouped.columns.levels[1]]
     concise.columns = [f"{col}_{agg}" for col in concise.columns.levels[0] for agg in concise.columns.levels[1]]
 
-    # Add 'filename' as a separate column in the resulting DataFrame
-    grouped.reset_index(inplace=True)
-    concise.reset_index(inplace=True)
-
-    col0 = grouped.pop('filename')
-    grouped.insert(len(grouped.columns), 'filename', col0)
-    col0 = concise.pop('filename')
-    concise.insert(len(concise.columns), 'filename', col0)
 
     return grouped, concise
 
