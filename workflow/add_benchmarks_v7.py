@@ -6,7 +6,8 @@ import os
 import pandas as pd
 from multiprocessing import Process, Manager
 
-
+# include a restore paths for after benchmarking the rules with wildcards that nest the benchmark file i.e. have a / in the wildcard
+# last bit would be to add a config file parser to include custom resources into the file
 def main():
     p = argparse.ArgumentParser(prog='name', description='{name} will do what I describe here')
     
@@ -21,6 +22,7 @@ def main():
     p.add_argument('-rb', '--remove-benchmarks', action='store_true', help='Remove all benchmark sections from the input file!')
     p.add_argument('-r', '--resources', action='store_true', help='Add resources section to each target rule in snakefile from benchmark tsv output')
     p.add_argument('-rr', '--remove-resources', action='store_true', help='Remove all resource sections from the input file!')
+    p.add_argument('-v', '--verbose', action='store_true', help='Print current state of benchmarks and resources section in file.')
     
     args = p.parse_args()
 
@@ -34,6 +36,7 @@ def main():
     remove_benchmarks = args.remove_benchmarks
     resources = args.resources
     remove_resources = args.remove_resources
+    verbose = args.verbose
 
     with open(snakefile, 'r') as fp:
         data = fp.read()
@@ -81,7 +84,7 @@ def main():
 
         for rule_name in all_rules:
             process = Process(target=process_rule, args=(
-                rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, target_rule, resources, remove_resources, resource_values
+                rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, target_rule, resources, remove_resources, resource_values, verbose
                 ))
             process.start() 
             processes.append(process)
@@ -166,7 +169,7 @@ def main():
 
 
 
-def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, target_rule, resources, remove_resources, resource_values):
+def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, benchmark_count, wildcard_data, exclude_wildcards, top_level_rules, target_rule, resources, remove_resources, resource_values, verbose):
 
     target_rule_pattern = rf'(?<=\nrule\s){rule_name}:((\n(.+))+)\s+output:((\n(.+))+)(?=\s\s\s\s+shell:|\s\s\s\s+run:|\s\s\s\s+script:)'
     output_pattern = r'(?<=output:)([\s\S]*?)(?=\n\s*\w+:|\Z)'
@@ -268,42 +271,47 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
                     updated_rule_text = re.sub(benchmark_pattern, '', rule_text)
                     if benchmark_count == 1:
                         print(f"\nAdded benchmark section to rule '{rule_name}' with {benchmark_count} repeat")
-                        if any('{{' in wc for wc in benchmark_wildcards):
+                        if '{{' or 'f"' or "f'" in benchmark_wildcards:
                             updated_rule_text = updated_rule_text + formatted_benchmark_section
                         else:
                             updated_rule_text = updated_rule_text + benchmark_section
                     else:
                         print(f"\nAdded benchmark section to rule '{rule_name}' with {benchmark_count} repeats")
-                        if any('{{' in wc for wc in benchmark_wildcards):
+                        #if '{{' in benchmark_wildcards:
+                        if '{{' or 'f"' or "f'" in benchmark_wildcards:
+                            updated_rule_text = updated_rule_text + formatted_benchmark_section
                             updated_rule_text = updated_rule_text + repeat_formatted_benchmark_section
                         else:
                             updated_rule_text = updated_rule_text + repeat_benchmark_section
                     new_rule_data[rule_name] = {'benchmarks': updated_rule_text}
-                else:
+                elif verbose:
                     print(f"\nBenchmark section already exists for rule '{rule_name}'")
             else:
                 if remove_benchmarks:
                     print(f"\nRemoving benchmark section from rule '{rule_name}'")
                     updated_rule_text = re.sub(benchmark_pattern, '', rule_text)
                     new_rule_data[rule_name] = {'benchmarks': updated_rule_text}
-                else:
+                elif verbose:
                     print(f"\nBenchmark section exists for rule '{rule_name}'")
         else:
             if benchmark_count == 1:
-                if any('{{' in wc for wc in benchmark_wildcards):
+                #if '{{' in benchmark_wildcards:
+                if '{{' or 'f"' or "f'" in benchmark_wildcards:
                     updated_rule_text = rule_text + formatted_benchmark_section
                 else:
                     updated_rule_text = rule_text + benchmark_section
                 new_rule_data[rule_name] = {'benchmarks': updated_rule_text}
                 print(f"\nAdded benchmark section to rule '{rule_name}' with {benchmark_count} repeat")
             elif benchmark_count is not None:
-                if any('{{' in wc for wc in benchmark_wildcards):
+                #  if '{{' in benchmark_wildcards:
+                 
+                if '{{' or 'f"' or "f'" in benchmark_wildcards:
                     updated_rule_text = rule_text + repeat_formatted_benchmark_section
                 else:
                     updated_rule_text = rule_text + repeat_benchmark_section
                 new_rule_data[rule_name] = {'benchmarks': updated_rule_text}
                 print(f"\nAdded benchmark section to rule '{rule_name}' with {benchmark_count} repeats")
-            else:
+            elif verbose:
                 print(f"\nNo benchmark section to remove from rule '{rule_name}'")
                 new_rule_data[rule_name] = {'benchmarks': rule_text}
 
@@ -342,14 +350,14 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
                     print(f"And adding {max_rss_max} mem_mb and {s_max} runtime to '{rule_name}'") 
                     updated_rule_text = updated_rule_text + resources_section
                     new_rule_data[rule_name] = {'resources': updated_rule_text}
-                else:
+                elif verbose:
                     print(f"\nResources section already exists for rule '{rule_name}'")
             else:
                 if remove_resources:
                     print(f"\nRemoving resources section from rule '{rule_name}'")
                     updated_rule_text = re.sub(resources_pattern, '', rule_text)
                     new_rule_data[rule_name] = {'resources': updated_rule_text}
-                else:
+                elif verbose:
                     print(f"\nResources section exists for rule '{rule_name}'")
         else:
            # if benchmark_count == 1:
@@ -368,13 +376,13 @@ def process_rule(rule_name, data, rule_data, new_rule_data, remove_benchmarks, b
            #     print(f"\nAdded benchmark section to rule '{rule_name}' with {benchmark_count} repeats")
             #add rulname max s rss
             if resources is True:
-               print(f"Adding the resources {max_rss_max} mem_mb and {s_max} runtime to '{rule_name}'")
-               updated_rule_text = rule_text + resources_section
-               print(updated_rule_text)
-               new_rule_data[rule_name] = {'resources': updated_rule_text}
-               print(new_rule_data,)
-            else:
-               print(f"\nNo resources section to remove from rule '{rule_name}'")
+                print(f"Adding the resources {max_rss_max} mem_mb and {s_max} runtime to '{rule_name}'")
+                updated_rule_text = rule_text + resources_section
+                print(updated_rule_text)
+                new_rule_data[rule_name] = {'resources': updated_rule_text}
+                print(new_rule_data,)
+            elif verbose:
+                print(f"\nNo resources section to remove from rule '{rule_name}'")
         #new_rule_data[rule_name].update({'resources': rule_text})
 
     # Rule doesn't match the target_rule_pattern and therefore must be a pseudo-ruledding and removing benchmark section
